@@ -10,7 +10,6 @@
 
 @interface NGBannerPresenter()
 
-
 @end
 
 @implementation NGBannerPresenter
@@ -18,8 +17,7 @@
 - (instancetype)initWithAdConfig:(AdConfig *)adConfig {
 	self = [super init];
 	if (self) {
-		_adConfig = adConfig;
-		_shouldCheckRepeatedAdIndex = NO;
+		_adConfig = adConfig;		
 	}
 	return self;
 }
@@ -28,40 +26,55 @@
 											 endIndex:(NSInteger)endIndex {
 	NSArray<NSNumber *> *fixedPositions = _adConfig.fixedPositions;
 	if (fixedPositions.count == 0) {
-		_shouldCheckRepeatedAdIndex = YES;
 		return @[];
 	}
 
 	NSMutableArray<NSNumber *> *result = [[NSMutableArray alloc] init];
 	for (NSNumber *fixedPosition in fixedPositions) {
 		NSInteger position = [fixedPosition integerValue];
-		if (position >= startIndex && position < endIndex) {
+		if (position >= startIndex && position <= endIndex) {
 			[result insertObject:fixedPosition atIndex:0];
 		}
 	}
 
-	if (endIndex > [_adConfig.fixedPositions.lastObject integerValue]) {
-		_shouldCheckRepeatedAdIndex = YES;
-	}
 	return result;
 }
 
-/*
-- (BOOL)isAdIndex:(NSInteger)row {
-	NSArray<NSNumber *> *fixedPositions = _adConfig.fixedPositions;
-	if (fixedPositions.count != 0) {
-		for (NSInteger i = 0; i < fixedPositions.count && row <= [fixedPositions.lastObject integerValue] + 1; i++) {
-			if (row == fixedPositions[i].integerValue + 1) {
-				return YES;
+- (BOOL)shouldSetupRepeatedAdIndexAd:(NSInteger)endIndex {
+	if (self.adConfig.fixedPositions.count == 0) {
+		return YES;
+	}
+
+	if ([self.adConfig.repeatedPosition integerValue] == 0) {
+		return NO;
+	}
+
+	return endIndex > [self.adConfig.fixedPositions.lastObject integerValue];
+}
+
+// returns index with ad
+- (NSIndexPath *)adIndex:(NSIndexPath *)originalIndex {
+	NSInteger numOfAd = 0;
+	NSInteger indexWithAd = originalIndex.row;
+	NSArray<NSNumber *> *fixedPositions = self.adConfig.fixedPositions;
+	if (fixedPositions.count > 0) {
+		for (NSNumber *fixedPosition in fixedPositions) {
+			if (originalIndex.row > fixedPosition.integerValue) {
+				numOfAd += 1;
 			}
 		}
 	}
 
-	if (_shouldCheckRepeatedAdIndex) {
-
+	NSInteger repeatedAdPosition = [self.adConfig.repeatedPosition integerValue];
+	if (numOfAd == fixedPositions.count &&
+		repeatedAdPosition > 0) {
+		NSInteger lastFixedPosition = self.adConfig.fixedPositions.lastObject.integerValue;
+		NSInteger repeatedAdStartIndex = lastFixedPosition + 1;
+		numOfAd += (originalIndex.row - repeatedAdStartIndex) / repeatedAdPosition;
 	}
-	return NO;
-}*/
 
+	indexWithAd += numOfAd;
+	return [NSIndexPath indexPathForRow:indexWithAd inSection:originalIndex.section];
+}
 
 @end

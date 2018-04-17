@@ -10,6 +10,8 @@
 
 @interface Post : NSObject
 
+@property (nonatomic, assign) NSInteger originalIndex;
+
 - (instancetype)initWithTitle:(NSString *)title;
 - (NSString *)getPostTitle;
 

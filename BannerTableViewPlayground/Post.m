@@ -15,6 +15,7 @@
 @end
 
 @implementation Post
+@synthesize originalIndex;
 
 - (instancetype)initWithTitle:(NSString *)title {
 	self = [super init];

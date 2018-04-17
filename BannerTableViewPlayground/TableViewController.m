@@ -18,11 +18,12 @@ static const CGFloat GADAdViewHeight = 250;
 @interface TableViewController () <UITableViewDelegate, UITableViewDataSource, GADBannerViewDelegate>
 
 @property (weak, nonatomic) IBOutlet UITableView *tableview;
+@property (nonatomic, strong) NSMutableArray *postItems;
 @property (nonatomic, strong) NSMutableArray *items;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *loadStateForAds;
-@property (nonatomic, strong) NSMutableDictionary<NSIndexPath *, NSNumber *> *bannerAdViewDidLoadOnIndex;
+// @property (nonatomic, strong) NSMutableDictionary<NSIndexPath *, NSNumber *> *bannerAdViewDidLoadOnIndex;
 @property (nonatomic, strong) NSMutableArray<GADBannerView *> *adsToLoad;
-@property (nonatomic, strong) NGBannerPresenter *presenter;
+@property (nonatomic, strong) NGBannerPresenter *bannerPresenter;
 
 @end
 
@@ -30,16 +31,23 @@ static const CGFloat GADAdViewHeight = 250;
 
 - (void)viewDidLoad {
 	[super viewDidLoad];
+
 	// Do any additional setup after loading the view, typically from a nib.
 	[self.tableview registerNib:[PostTableViewCell getNib] forCellReuseIdentifier:[PostTableViewCell cellIdentifier]];
 	[self.tableview registerClass:[BannerAdTableViewCell class] forCellReuseIdentifier:[BannerAdTableViewCell cellIdentifier]];
 	// self.tableview.rowHeight = UITableViewAutomaticDimension;
 	self.tableview.estimatedRowHeight = 100;
 
+	// Ensure subview layout has been performed before accessing subview sizes.
+	[self.tableview layoutIfNeeded];
+
 	[self addMenuItems];
-	[self addBannerAds:0];
+	// [self addBannerAds:0 endIndex:self.postItems.count];
 	[self preloadNextAd];
 	[self.tableview reloadData];
+
+	UIBarButtonItem *rightItem = [[UIBarButtonItem alloc] initWithTitle:@"Add" style:UIBarButtonItemStylePlain target:self action:@selector(userDidTapAddButton:)];
+	self.navigationItem.rightBarButtonItem = rightItem;
 }
 
 - (void)didReceiveMemoryWarning {
@@ -48,49 +56,77 @@ static const CGFloat GADAdViewHeight = 250;
 }
 
 - (void)addMenuItems {
-	for (int index = 0; index < 100; index++) {
+	NSInteger startIndex = self.postItems.count;
+	NSMutableArray *newPosts = [[NSMutableArray alloc] init];
+	for (NSInteger index = startIndex; index < startIndex + 10; index++) {
 		NSString *postTitle = [NSString stringWithFormat:@"Post: %zd", index];
 		Post *post = [[Post alloc] initWithTitle:postTitle];
-		[self.items addObject:post];
+		post.originalIndex = index;
+		[newPosts addObject:post];
 	}
+	[self.postItems addObjectsFromArray:newPosts];
+
+	NSMutableArray *combindedList = [self addBannerAds:startIndex endIndex:self.postItems.count - 1 source:newPosts];
+	[self.items addObjectsFromArray:combindedList];
 }
 
-- (void)addBannerAds:(NSInteger)startIndex {
+// start index without ad
+- (NSMutableArray *)addBannerAds:(NSInteger)startIndex endIndex:(NSInteger)endIndex source:(NSMutableArray *)source {
 	[self trySetupPresenter];
 
-	// Ensure subview layout has been performed before accessing subview sizes.
-	[self.tableview layoutIfNeeded];
-
-	NSString *adUnitId = self.presenter.adConfig.adUnitId;
-	NSInteger listStartIndex = startIndex;
-	NSInteger listEndIndex = self.items.count;
-	NSArray<NSNumber *> *fixedPositions = [self.presenter getFixedPositionByStartIndex:listStartIndex endIndex:listEndIndex];
-
+	NSString *adUnitId = self.bannerPresenter.adConfig.adUnitId;
+	NSInteger numOfAdAdded = 0;
+	NSMutableArray *resultList = [[NSMutableArray alloc] initWithArray:source];
+	NSArray<NSNumber *> *fixedPositions = [self.bannerPresenter getFixedPositionByStartIndex:startIndex endIndex:endIndex];
 	if (fixedPositions.count > 0) {
 		for (NSNumber *fixPosition in fixedPositions) {
-			NSInteger position = [fixPosition integerValue];
+			NSInteger position = [fixPosition integerValue] + 1 - startIndex; // cause the ad will append to the target index, therefore we need to plus 1 here
 			GADBannerView *bannerView = [self renderBannerViewWithAdUnitId:adUnitId];
-			[self.items insertObject:bannerView atIndex:position];
+			if (position < resultList.count) {
+				[resultList insertObject:bannerView atIndex:position];
+				numOfAdAdded += 1;
+			} else {
+				[resultList addObject:bannerView];
+				numOfAdAdded += 1;
+			}
 		}
 	}
-
-	if (self.presenter.shouldCheckRepeatedAdIndex &&
-		[self.presenter.adConfig.repeatedPosition integerValue] > 0) {
-		NSInteger startIndex = 0;
-		if (fixedPositions.count > 0) {
-			startIndex = [fixedPositions.firstObject integerValue];
+	
+	if ([self.bannerPresenter shouldSetupRepeatedAdIndexAd:endIndex]) {
+		NSInteger repeatedAdIndex = 0;
+		NSInteger repeatedIndex = [self.bannerPresenter.adConfig.repeatedPosition integerValue];
+		NSInteger previousAdStartIndex = 0;
+		if (self.bannerPresenter.adConfig.fixedPositions.count > 0) {
+			repeatedAdIndex = self.bannerPresenter.adConfig.fixedPositions.lastObject.integerValue + 1;
 		} else {
-			startIndex = listStartIndex;
+			repeatedAdIndex = 0;
 		}
 
-		NSInteger repeatedIndex = [self.presenter.adConfig.repeatedPosition integerValue];
-		startIndex += repeatedIndex;
-		while (startIndex < self.items.count) {
+		if (startIndex > repeatedAdIndex) {
+			// find previous repeated ad index
+			repeatedAdIndex = startIndex - ((startIndex - repeatedAdIndex) % repeatedIndex);
+			previousAdStartIndex = repeatedAdIndex;
+		}
+
+		repeatedAdIndex += repeatedIndex;
+		while (repeatedAdIndex <= endIndex) {
 			GADBannerView *bannerView = [self renderBannerViewWithAdUnitId:adUnitId];
-			[self.items insertObject:bannerView atIndex:startIndex];
-			startIndex += repeatedIndex;
+			NSUInteger insertIndex = repeatedAdIndex - startIndex + numOfAdAdded;
+			// NSLog(@"[BannerAd] repeatedAdStartIndex: %zd insertIndex: %zd", repeatedAdIndex, insertIndex);
+			if (insertIndex < resultList.count) {
+				[resultList insertObject:bannerView atIndex:insertIndex];
+				numOfAdAdded += 1;
+			}
+			repeatedAdIndex += repeatedIndex;
+		}
+		// handle case where the banner display at the end of index
+		if (repeatedAdIndex == (endIndex + 1) &&
+			(repeatedAdIndex - previousAdStartIndex) % repeatedIndex == 0) {
+			GADBannerView *bannerView = [self renderBannerViewWithAdUnitId:adUnitId];
+			[resultList addObject:bannerView];
 		}
 	}
+	return resultList;
 }
 
 - (GADBannerView *)renderBannerViewWithAdUnitId:(NSString *)adUnitId {
@@ -109,17 +145,23 @@ static const CGFloat GADAdViewHeight = 250;
 
 - (AdConfig *)buildAdConfig {
 	AdConfig *config = [[AdConfig alloc] initWithAdUnitId:@"ca-app-pub-3940256099942544/2934735716"
-										   fixedPositions:@[@3,@7,@12]
-										 repeatedPosition:@8];
+										   fixedPositions:@[@3,@6,@9]
+										 repeatedPosition:@5];
 	return config;
 }
 
 - (void)trySetupPresenter {
-	if (_presenter) {
+	if (_bannerPresenter) {
 		return;
 	}
 	AdConfig *adConfig = [self buildAdConfig];
-	self.presenter = [[NGBannerPresenter alloc] initWithAdConfig:adConfig];
+	self.bannerPresenter = [[NGBannerPresenter alloc] initWithAdConfig:adConfig];
+}
+
+- (void)userDidTapAddButton:(id)sender {
+	[self addMenuItems];
+	[self preloadNextAd];
+	[self.tableview reloadData];
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -151,7 +193,8 @@ static const CGFloat GADAdViewHeight = 250;
 		PostTableViewCell *postCell =
 		[self.tableview dequeueReusableCellWithIdentifier:[PostTableViewCell cellIdentifier]
 											 forIndexPath:indexPath];
-		postCell.titleLabel.text = [post getPostTitle];
+		postCell.titleLabel.text = [NSString stringWithFormat:@"%@ - ad index: %zd", [post getPostTitle], indexPath.row];
+		postCell.post = post;
 		return postCell;
 	} else if ([self.items[indexPath.row] isKindOfClass:[GADBannerView class]]) {
 		BannerAdTableViewCell *bannerAdCell =
@@ -173,6 +216,18 @@ static const CGFloat GADAdViewHeight = 250;
 		GADBannerView *adView = self.items[indexPath.row];
 		[bannerAdCell.bannerContentView addSubview:adView];
 	}
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+	[self.tableview deselectRowAtIndexPath:indexPath animated:true];
+	PostTableViewCell *postCell = [self.tableview cellForRowAtIndexPath:indexPath];
+	Post *selectedPost = postCell.post;
+	NSUInteger foundIndex = [self.postItems indexOfObject:selectedPost];
+	// NSInteger originalIndex = [self.presenter originalIndex:indexPath].row;
+	NSIndexPath *originalIndexPath = [NSIndexPath indexPathForRow:postCell.post.originalIndex inSection:indexPath.section];
+	NSInteger indexWithAd = [self.bannerPresenter adIndex:originalIndexPath].row;
+	// NSLog(@"[BannerAd] indexWithAd: %zd", indexWithAd);
+	NSLog(@"[BannerAd] originalIndex: %zd indexWithAd: %zd", foundIndex, indexWithAd);
 }
 
 - (void)preloadNextAd {
@@ -198,13 +253,6 @@ static const CGFloat GADAdViewHeight = 250;
 	return _loadStateForAds;
 }
 
-- (NSMutableDictionary<NSIndexPath *, NSNumber *> *)bannerAdViewDidLoadOnIndex {
-	if (!_bannerAdViewDidLoadOnIndex) {
-		_bannerAdViewDidLoadOnIndex = [[NSMutableDictionary alloc] init];
-	}
-	return _bannerAdViewDidLoadOnIndex;
-}
-
 - (NSMutableArray<GADBannerView *> *)adsToLoad {
 	if (!_adsToLoad) {
 		_adsToLoad = [[NSMutableArray alloc] init];
@@ -219,6 +267,13 @@ static const CGFloat GADAdViewHeight = 250;
 	return _items;
 }
 
+- (NSMutableArray *)postItems {
+	if (!_postItems) {
+		_postItems = [[NSMutableArray alloc] init];
+	}
+	return _postItems;
+}
+
 
 #pragma mark GADBannerView delegate methods
 - (void)adViewDidReceiveAd:(GADBannerView *)bannerView {
@@ -227,6 +282,7 @@ static const CGFloat GADAdViewHeight = 250;
 	// Load the next ad in the adsToLoad list.
 	[self preloadNextAd];
 
+	/*
 	NSArray<UITableViewCell *> *visibleCells = self.tableview.visibleCells;
 	for (UITableViewCell *visibleCell in visibleCells) {
 		if ([visibleCell isKindOfClass:[BannerAdTableViewCell class]]) {
@@ -239,7 +295,7 @@ static const CGFloat GADAdViewHeight = 250;
 				[self.tableview layoutIfNeeded];
 			}
 		}
-	}
+	}*/
 }
 
 - (void)adView:(GADBannerView *)bannerView didFailToReceiveAdWithError:(GADRequestError *)error {

@@ -13,10 +13,14 @@
 @interface NGBannerPresenter : NSObject
 
 @property (nonatomic,readonly) AdConfig *adConfig;
-@property (nonatomic, readonly) BOOL shouldCheckRepeatedAdIndex;
+// @property (nonatomic, readonly) BOOL shouldCheckRepeatedAdIndex;
 - (instancetype)initWithAdConfig:(AdConfig *)adConfig;
 
 - (NSArray<NSNumber *> *)getFixedPositionByStartIndex:(NSInteger)startIndex
 											 endIndex:(NSInteger)endIndex;
+
+- (BOOL)shouldSetupRepeatedAdIndexAd:(NSInteger)endIndex;
+// - (NSIndexPath *)originalIndex:(NSIndexPath *)indexPathWithAd;
+- (NSIndexPath *)adIndex:(NSIndexPath *)originalIndex;
 
 @end
