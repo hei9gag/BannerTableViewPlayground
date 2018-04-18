@@ -105,8 +105,9 @@ static const CGFloat GADAdViewHeight = 250;
 		if (startIndex > repeatedAdIndex) {
 			// find previous repeated ad index
 			repeatedAdIndex = startIndex - ((startIndex - repeatedAdIndex) % repeatedPosition);
-			previousAdStartIndex = repeatedAdIndex;
 		}
+
+		previousAdStartIndex = repeatedAdIndex;
 
 		repeatedAdIndex += repeatedPosition;
 		while (repeatedAdIndex <= endIndex) {
@@ -145,8 +146,8 @@ static const CGFloat GADAdViewHeight = 250;
 
 - (AdConfig *)buildAdConfig {
 	AdConfig *config = [[AdConfig alloc] initWithAdUnitId:@"ca-app-pub-3940256099942544/2934735716"
-										   fixedPositions:@[@3,@6,@9]
-										 repeatedPosition:@5];
+										   fixedPositions:@[@2,@5]
+										 repeatedPosition:@10];
 	return config;
 }
 
