@@ -94,7 +94,7 @@ static const CGFloat GADAdViewHeight = 250;
 	
 	if ([self.bannerPresenter shouldSetupRepeatedAdIndexAd:endIndex]) {
 		NSInteger repeatedAdIndex = 0;
-		NSInteger repeatedIndex = [self.bannerPresenter.adConfig.repeatedPosition integerValue];
+		NSInteger repeatedPosition = [self.bannerPresenter.adConfig.repeatedPosition integerValue];
 		NSInteger previousAdStartIndex = 0;
 		if (self.bannerPresenter.adConfig.fixedPositions.count > 0) {
 			repeatedAdIndex = self.bannerPresenter.adConfig.fixedPositions.lastObject.integerValue + 1;
@@ -104,11 +104,11 @@ static const CGFloat GADAdViewHeight = 250;
 
 		if (startIndex > repeatedAdIndex) {
 			// find previous repeated ad index
-			repeatedAdIndex = startIndex - ((startIndex - repeatedAdIndex) % repeatedIndex);
+			repeatedAdIndex = startIndex - ((startIndex - repeatedAdIndex) % repeatedPosition);
 			previousAdStartIndex = repeatedAdIndex;
 		}
 
-		repeatedAdIndex += repeatedIndex;
+		repeatedAdIndex += repeatedPosition;
 		while (repeatedAdIndex <= endIndex) {
 			GADBannerView *bannerView = [self renderBannerViewWithAdUnitId:adUnitId];
 			NSUInteger insertIndex = repeatedAdIndex - startIndex + numOfAdAdded;
@@ -117,11 +117,11 @@ static const CGFloat GADAdViewHeight = 250;
 				[resultList insertObject:bannerView atIndex:insertIndex];
 				numOfAdAdded += 1;
 			}
-			repeatedAdIndex += repeatedIndex;
+			repeatedAdIndex += repeatedPosition;
 		}
 		// handle case where the banner display at the end of index
 		if (repeatedAdIndex == (endIndex + 1) &&
-			(repeatedAdIndex - previousAdStartIndex) % repeatedIndex == 0) {
+			(repeatedAdIndex - previousAdStartIndex) % repeatedPosition == 0) {
 			GADBannerView *bannerView = [self renderBannerViewWithAdUnitId:adUnitId];
 			[resultList addObject:bannerView];
 		}
